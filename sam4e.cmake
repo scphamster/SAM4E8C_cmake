@@ -1,0 +1,253 @@
+INCLUDE(CMakeForceCompiler)
+
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR arm)
+set(CMAKE_SYSTEM_VERSION 1)
+set(CMAKE_EXECUTABLE_SUFFIX_C   .elf)
+set(CMAKE_EXECUTABLE_SUFFIX_CXX .elf)
+set(CMAKE_EXECUTABLE_SUFFIX_ASM .elf)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_COMPILER_WORKS 1)
+set(CMAKE_CXX_COMPILER_WORKS 1)
+
+set(PACKS_REPO "C:/Program Files (x86)/Atmel/Studio/7.0/packs")
+set(TOOLSDIR "C:/Program Files (x86)/Atmel/Studio/7.0/toolchain/arm/arm-gnu-toolchain/bin")
+set(TOOLCHAIN_PATH "C:/Program Files (x86)/Atmel/Studio/7.0/toolchain/arm/arm-gnu-toolchain")
+
+find_program(CMAKE_C_COMPILER NAMES arm-none-eabi-gcc HINTS ${TOOLSDIR})
+find_program(CMAKE_CXX_COMPILER NAMES arm-none-eabi-g++ HINTS ${TOOLSDIR})
+find_program(CMAKE_OBJCOPY NAMES arm-none-eabi-objcopy HINTS ${TOOLSDIR})
+find_program(CMAKE_LINKER NAMES arm-none-eabi-ld HINTS ${TOOLSDIR})
+find_program(CMAKE_SIZE NAMES arm-none-eabi-size HINTS ${TOOLSDIR})
+
+
+if(NOT ARM_CPU)
+    set(
+        ARM_CPU cortex-m4
+        CACHE STRING "setdefault MCU: cortex-m4 (see 'arm-none-eabi-gcc --target-help' for valid values)"
+    )
+endif(NOT ARM_CPU)
+
+if(NOT ATMEL_ARCH)
+    set(
+        ATMEL_ARCH SAM4E
+        CACHE STRING "setthe default architecture: SAM4E"
+    )
+endif(NOT ATMEL_ARCH)
+
+if(NOT SAM_MCU)
+    set(
+        SAM_MCU SAM4E8C
+        CACHE STRING "setthe default MCU platform: sam4e8c"
+    )
+endif(NOT SAM_MCU)
+
+# Options
+option(USE_UPLOADER "Are you using an uploader for the MCU?" OFF)
+option(USE_UF2_BOOTLOADER "Are you using a UF2 bootloader?" OFF)
+
+option(BUILD_HEX "Build *.hex" OFF)
+option(BUILD_LST "Build *.lst" OFF)
+
+# Bossac Specific
+if(USE_UPLOADER)
+    if(NOT ARM_UPLOADTOOL)
+        set(
+            ARM_UPLOADTOOL bossac
+            CACHE STRING "setdefault upload tool: bossac"
+        )
+        find_program(ARM_UPLOADTOOL bossac)
+    endif(NOT ARM_UPLOADTOOL)
+
+    if(NOT UPLOAD_PORT)
+        set(
+            UPLOAD_PORT COM4
+            CACHE STRING "setupload port: COM<port_num>"
+        )
+    endif(NOT UPLOAD_PORT)
+endif(USE_UPLOADER)
+
+# UF2 Specific
+if(USE_UF2_BOOTLOADER)
+    if(NOT SHELL_COPY_COMMAND)
+        set(
+            SHELL_COPY_COMMAND copy
+            CACHE STRING "setshell copy command: default 'copy'"
+        )
+    endif(NOT SHELL_COPY_COMMAND)
+
+    if(NOT UF2_DRIVE_MOUNT)
+        set(
+            UF2_DRIVE_MOUNT "D:"
+            CACHE STRING "setthe mount point the UF2 populates: default 'D:'"
+        )
+    endif(NOT UF2_DRIVE_MOUNT)
+endif(USE_UF2_BOOTLOADER)
+
+# ### Environment Configuring ####
+
+# where is the target environment
+
+# search for programs in the build host directories
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+
+# for libraries and headers in the target directories
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+function(display_size TARGET)
+    add_custom_target(${TARGET}_display_size ALL
+        COMMAND ${CMAKE_SIZE} ${TARGET}${CMAKE_EXECUTABLE_SUFFIX_C}
+        COMMENT "Target Size:"
+        DEPENDS ${TARGET}
+        WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    )
+endfunction(display_size)
+
+function(generate_binary_file MYTARGET)
+    # add_custom_target("${MYTARGET}.bin" 
+    #                     ALL 
+    #                     DEPENDS ${MYTARGET}${CMAKE_EXECUTABLE_SUFFIX_C}
+    #                     WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    #                     COMMENT "Generating bin file" ${MYTARGET}.bin
+    # )
+
+    # add_custom_command(TARGET ${MYTARGET}.bin 
+    #     POST_BUILD
+    #     COMMAND ${CMAKE_OBJCOPY} -O binary ${MYTARGET}${CMAKE_EXECUTABLE_SUFFIX_C} ${MYTARGET}.bin
+    #     DEPENDS ${MYTARGET}${CMAKE_EXECUTABLE_SUFFIX_C}
+    #     WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    #     COMMENT "Generating binary file" ${MYTARGET}.bin
+    # )
+
+    add_custom_command(TARGET ${MYTARGET} POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O binary ${MYTARGET}${CMAKE_EXECUTABLE_SUFFIX_C} ${MYTARGET}.bin
+        DEPENDS ${MYTARGET}${CMAKE_EXECUTABLE_SUFFIX_C}
+        WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+        COMMENT "Generating binary file" ${MYTARGET}.bin
+    )
+endfunction(generate_binary_file)
+
+function(add_sam_executable EXECUTABLE_NAME)
+    set(additional_source_files ${ARGN})
+    list(LENGTH additional_source_files num_of_source_files)
+
+    if(num_of_source_files LESS 0)
+        message(FATAL_ERROR "No source files provided for ${EXECUTABLE_NAME}")
+    else()
+        foreach(src_file ${additional_source_files})
+            message(STATUS "Including source: ${src_file}")
+        endforeach()
+    endif()
+
+    set(ELF_OUTPUT_FILE "${EXECUTABLE_NAME}.elf")
+    set(BIN_OUTPUT_FILE "${EXECUTABLE_NAME}.bin")
+    set(UF2_OUTPUT_FILE "${EXECUTABLE_NAME}.uf2")
+
+    # set(HEX_OUTPUT_FILE "${EXECUTABLE_NAME}.hex")
+    # set(LST_OUTPUT_FILE "${EXECUTABLE_NAME}.lst")
+    set(MAP_OUTPUT_FILE "${EXECUTABLE_NAME}.map")
+    # set(EEPROM_IMAGE "${EXECUTABLE_NAME}-eeprom.hex")
+
+    message("started add_executable")
+    add_executable(${EXECUTABLE_NAME} ${additional_source_files})
+
+    target_include_directories(${EXECUTABLE_NAME}
+        PUBLIC "${PACKS_REPO}/arm/CMSIS/5.4.0/CMSIS/Core/Include"
+        PUBLIC "${PACKS_REPO}/atmel/${ATMEL_ARCH}_DFP/1.1.57/ic.sam4e/include")
+    
+    set_target_properties(
+        ${EXECUTABLE_NAME}
+        PROPERTIES
+            COMPILE_FLAGS "-x c -mthumb -DDEBUG -D__${SAM_MCU}__ -Og -ffunction-sections -mlong-calls -g3 -Wall -mcpu=${ARM_CPU} -c -std=gnu11 -MD -MP" # -MF /"Device_Startup/startup_samd51.d/" -MT/"Device_Startup/startup_samd51.d/" -MT/"Device_Startup/startup_samd51.o/"   -o /"Device_Startup/startup_samd51.o/" /"../Device_Startup/startup_samd51.c/""
+            LINK_FLAGS "-mthumb -Wl,-Map=\" ${EXECUTABLE_NAME}.map\" -Wl,--start-group -lm  -Wl,--end-group -L\"${CMAKE_SOURCE_DIR}/Device_Startup\"  -Wl,--gc-sections -mcpu=${ARM_CPU} -T ${SAM_MCU}_flash.ld")
+
+    # Create binary from ELF.
+   # add_custom_target(
+    #    ${BIN_OUTPUT_FILE}
+    #    ${CMAKE_OBJCOPY} -O binary ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${ELF_OUTPUT_FILE} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${BIN_OUTPUT_FILE}
+   #     DEPENDS ${EXECUTABLE_NAME}
+   # )
+
+    get_directory_property(
+        clean_files ADDITIONAL_MAKE_CLEAN_FILES
+    )
+
+    set_directory_properties(
+        PROPERTIES
+        ADDITIONAL_MAKE_CLEAN_FILES "${MAP_OUTPUT_FILE}"
+    )
+
+    if(USE_UPLOADER)
+        # Create utility project for uploading via BOSSA
+        add_custom_target(
+            "Upload_${EXECUTABLE_NAME}"
+            ${ARM_UPLOADTOOL} -i -d --port=${UPLOAD_PORT} -U --offset=0x4000 -w -v ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${BIN_OUTPUT_FILE} -R
+            DEPENDS ${BIN_OUTPUT_FILE}
+        )
+
+        set_target_properties(
+            "Upload_${EXECUTABLE_NAME}"
+            PROPERTIES
+            FOLDER "deploy"
+        )
+    endif(USE_UPLOADER)
+
+    if(USE_UF2_BOOTLOADER)
+        # #
+        # Create the UF2 file.
+        add_custom_target(
+            ${UF2_OUTPUT_FILE}
+            python ${CMAKE_SOURCE_DIR}/scripts/uf2/uf2conv.py -c -b 0x4000 -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${UF2_OUTPUT_FILE} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${BIN_OUTPUT_FILE}
+            DEPENDS ${BIN_OUTPUT_FILE}
+        )
+
+        # #
+        # Copy UF2 file to the MSC drive.
+        add_custom_target(
+            "Flash_${UF2_OUTPUT_FILE}"
+            ${SHELL_COPY_COMMAND} bin//${UF2_OUTPUT_FILE} ${UF2_DRIVE_MOUNT}
+            VERBATIM
+            USES_TERMINAL
+            DEPENDS ${UF2_OUTPUT_FILE}
+        )
+
+        set_target_properties(
+            "Flash_${UF2_OUTPUT_FILE}"
+            PROPERTIES
+            FOLDER "deploy"
+        )
+    endif(USE_UF2_BOOTLOADER)
+endfunction(add_sam_executable)
+
+function(add_sam_library LIBRARY_NAME)
+    set(additional_source_files ${ARGN})
+    list(LENGTH additional_source_files num_of_source_files)
+
+    if(num_of_source_files LESS 0)
+        message(FATAL_ERROR "No source files provided for ${LIBRARY_NAME}")
+    else()
+        foreach(src_file ${additional_source_files})
+            message(STATUS "Including source: ${src_file}")
+        endforeach()
+    endif()
+
+    set(STATICLIB_OUTPUT_FILE "${LIBRARY_NAME}.a")
+
+    # Create static library.
+    add_library(${LIBRARY_NAME} STATIC   ${additional_source_files})
+
+    target_include_directories(${EXECUTABLE_NAME}
+        PUBLIC "${PACKS_REPO}/arm/CMSIS/5.4.0/CMSIS/Core/Include"
+        PUBLIC "${PACKS_REPO}/atmel/$(ATMEL_ARCH)_DFP/1.1.57/ic.sam4e/include")
+
+    set_target_properties(
+        ${LIBRARY_NAME}
+        PROPERTIES
+        COMPILE_FLAGS "-x c -mthumb -DDEBUG -D__${SAM_MCU}__ -Og -ffunction-sections -mlong-calls -g3 -Wall -mcpu=${ARM_CPU} -c -std=gnu11 -MD -MP -MF \" ${LIBRARY_NAME}.d\"" # -MT/"library.d/" -MT/"library.o/"   -o /"library.o/" /".././library.c/""
+        LINKER_LANGUAGE "C"
+        ARCHIVE_OUTPUT_NAME "${LIBRARY_NAME}"
+    )
+endfunction(add_sam_library)

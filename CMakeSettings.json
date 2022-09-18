@@ -1,0 +1,30 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "gcc-arm" ],
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "ARM_CPU",
+          "value": "cortex-m4",
+          "type": "STRING"
+        },
+        {
+          "name": "CMAKE_EXPORT_COMPILE_COMMANDS",
+          "value": "True",
+          "type": "BOOL"
+        }
+      ],
+      "cmakeToolchain": "C:/dev/Projects/embedded_cmake/sam4e.cmake",
+      "cmakeExecutable": "C:/Program Files/CMake/bin/cmake.exe",
+      "intelliSenseMode": "linux-gcc-arm"
+    }
+  ]
+}
